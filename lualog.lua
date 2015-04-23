@@ -1,14 +1,14 @@
 
 if not LUALOG then
 	LUALOG = {}
-	LUALOG.Config = {}
+	LUALOG.UserConfig = {}
+	LUALOG.SourceDefs = {}
 end
 
-
-
 local driver = require "luasql.sqlite3"
-require "lualog_config"
-
+require "lualog_util"
+require "lualog_userconfig"
+require "lualog_sourcedefs"
 
 
 -- psuedo enums --
@@ -70,13 +70,6 @@ local function MoveFile(logfile)
 end
 
 
-function quotetrim(s)
-  -- from PiL2 20.4
-  s = s:gsub("^%s*(.-)%s*$", "%1")
-  return (s:gsub("^\"*(.-)\"*$", "%1"))
-end
-
-
 local function IsLineValid(logline)
 	local t = string.match(logline, 'L %d%d/%d%d/%d%d%d%d [-] %d%d:%d%d:%d%d: ')
 	if (t == nil) then return false
@@ -129,7 +122,7 @@ local function ProcessLineContext(logdt, logtm, logentry)
 	end
 
 	-- if we encountered a lua error, prep to record future lines against it
-	if (contextid == LOGCONTEXT_LUAERROR and LUALOG.Config.ShouldProcessLuaErrors) then
+	if (contextid == LOGCONTEXT_LUAERROR and LUALOG.UserConfig.ShouldProcessLuaErrors) then
 		ProcessingLuaError = true;
 		lastLuaErrorDate = logdt
 		lastLuaErrorTime = logtm
@@ -140,13 +133,13 @@ local function ProcessLineContext(logdt, logtm, logentry)
 		contextid = LOGCONTEXT_LUAERRORDETAIL
 	end
 	
-	if (contextid == LOGCONTEXT_RCON and LUALOG.Config.ShouldProcessRcon == false) then
+	if (contextid == LOGCONTEXT_RCON and LUALOG.UserConfig.ShouldProcessRcon == false) then
 		return
 	end
 	
 	log(LOGTYPE_DEBUG,LOGCONTEXTMSG[contextid], nick, steamid, slot, ip, team, truelogentry)
 	
-	if (contextid ~= LOGCONTEXT_UNKNOWN or LUALOG.Config.ShouldProcessUnknown == true) then
+	if (contextid ~= LOGCONTEXT_UNKNOWN or LUALOG.UserConfig.ShouldProcessUnknown == true) then
 		linesWritten = linesWritten + 1
 		local logdatetime = logdt .. ' ' .. logtm
 		
@@ -194,7 +187,7 @@ end
 
 local function CheckAndCreateTable()
 	-- reset our table
-	if (LUALOG.Config.ShouldFlushDB) then res = con:execute"DROP TABLE logs" end
+	if (LUALOG.UserConfig.ShouldFlushDB) then res = con:execute"DROP TABLE logs" end
 	res = assert (con:execute[[
 	CREATE TABLE IF NOT EXISTS logs(
 	server varchar(50),
@@ -216,15 +209,15 @@ end
 -- Entry point --
 
 env = assert (driver.sqlite3())
-con = assert (env:connect(LUALOG.Config.targetDB))
+con = assert (env:connect(LUALOG.UserConfig.targetDB))
 CheckAndCreateTable()
-for key, value in pairs(LUALOG.Config.logDirs) do
+for key, value in pairs(LUALOG.UserConfig.logDirs) do
 
 	local filesToProcess = {}
 	dir = value
 	currServer = key
 	log (nil,"Building log file list")
-	local p = io.popen('find "'..dir..'" -type f -name "'..LUALOG.Config.fileMask..'" | xargs ls -1tr')  
+	local p = io.popen('find "'..dir..'" -type f -name "'..LUALOG.UserConfig.fileMask..'" | xargs ls -1tr')  
 
 	for file in p:lines() do                         --Loop through all files
 	   filesToProcess[#filesToProcess + 1] = file;
@@ -234,7 +227,7 @@ for key, value in pairs(LUALOG.Config.logDirs) do
 		ProcessFile(logfile)
 		
 		-- don't archive the last file, it's most likely in use.
-		if next(filesToProcess,key) ~= nil and LUALOG.Config.ShouldArchiveFiles == true then
+		if next(filesToProcess,key) ~= nil and LUALOG.UserConfig.ShouldArchiveFiles == true then
 			MoveFile(logfile)
 		end
 	end
