@@ -11,3 +11,5 @@ LUALOG.UserConfig.ShouldProcessRcon = false;
 LUALOG.UserConfig.ShouldProcessUnknown = true;
 --LUALOG.UserConfig.ShouldProcessAdminSay = false; -- not yet implemented
 --LUALOG.UserConfig.ShouldProcessPrivateSay = false; -- not yet implemented
+-- logging level
+LUALOG.UserConfig.ShowLogLevel = LOGTYPE_INFO

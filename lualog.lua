@@ -7,17 +7,12 @@ end
 
 local driver = require "luasql.sqlite3"
 require "lualog_util"
+require "lualog_logger"
 require "lualog_userconfig"
 require "lualog_sourcedefs"
 
 
 -- psuedo enums --
--- Establish some positional info for matches
-local LOGDT_START, LOGDT_END, LOGTM_START, LOGTM_END, LOGENTRY_START = 3,12, 16,23, 26
-
--- Establish internal logging types
-local LOGTYPE_ERROR, LOGTYPE_WARNING, LOGTYPE_INFO, LOGTYPE_DEBUG  = 1,2,3,4
-local LOGTYPEMSG = {"Error", "Warning", "Info", "Debug"}
 
 -- Establish context types for srcds log entries
 local LOGCONTEXT_UNKNOWN, LOGCONTEXT_SAY, LOGCONTEXT_CONNECT, LOGCONTEXT_VALIDATED, LOGCONTEXT_ENTERED, LOGCONTEXT_ULXCMD, LOGCONTEXT_RCON, LOGCONTEXT_BANID, LOGCONTEXT_LUAERROR, LOGCONTEXT_LUAERRORDETAIL, LOGCONTEXT_SAYTEAM, LOGCONTEXT_DISCONNECTED = 1,2,3,4,5,6,7,8,9,10,11,12
@@ -32,8 +27,7 @@ local LOGCONTEXT_NONSICHECKS = {"%[ULX%]","rcon from","Banid:", "Lua Error:"}
 local LOGCONTEXT_NONSICHECKID = {LOGCONTEXT_ULXCMD, LOGCONTEXT_RCON, LOGCONTEXT_BANID, LOGCONTEXT_LUAERROR}
 
 
--- logging level
-local ShowLogLevel = LOGTYPE_INFO
+
 
 ------------------------------------------------------------------------------------------------------------------------
 
@@ -46,21 +40,11 @@ local currServer =""
 local con, env
 
 
--- Some helper functions --
-local function log(type, ...)
-	if (type == nil) then type = LOGTYPE_INFO end;
-	if (type > ShowLogLevel) then return end;
-	local printResult = LOGTYPEMSG[type] .. "\t"
-	
-	for i,v in ipairs(arg) do
-		printResult = printResult .. tostring(v) .. "\t"
-	end
-	print (printResult);
-end
+
 
 
 local function DeleteExistingTag(logtag)
-	log(LOGTYPE_INFO,"Removing entries for "..currServer..logtag)
+	LUALOG.log(LOGTYPE_INFO,"Removing entries for "..currServer..logtag)
 	res = assert (con:execute(string.format([[DELETE from logs where logfile = '%s']], currServer..logtag)))
 end
 
@@ -81,7 +65,7 @@ end
 
 local function ProcessLineContext(logdt, logtm, logentry)
 	
-	log (LOGTYPE_DEBUG, "Processing context: ", logentry);
+	LUALOG.log (LOGTYPE_DEBUG, "Processing context: ", logentry);
 	local contextid = LOGCONTEXT_UNKNOWN
 	local nick, steamid, slot, ip, team, truelogentry = "","","","",""
 	local cmd1, cmd2 = "",""
@@ -89,7 +73,7 @@ local function ProcessLineContext(logdt, logtm, logentry)
 	-- Do basic checks for a standard steam info line plus context
 	nick, slot, steamid, team, truelogentry  = string.match(logentry, '"(.*)<(%d+)><(.+)><(.*)>" (.*)')
 	if (steamid ~= nil) then -- we have a typical Steam entry, like a say or a join
-		log(LOGTYPE_DEBUG, "Steam Info parse:", nick, steamid, slot, ip, team, contextid, truelogentry)
+		LUALOG.log(LOGTYPE_DEBUG, "Steam Info parse:", nick, steamid, slot, ip, team, contextid, truelogentry)
 		for key,value in pairs(LOGCONTEXT_SICHECKS) do
 			local part1, part2 = string.match(truelogentry, '^('..value..')(.*)')
 			if (part1 ~= nil) then
@@ -102,7 +86,7 @@ local function ProcessLineContext(logdt, logtm, logentry)
 	else  
 		truelogentry = logentry -- default
 		nick, steamid, slot, ip, team = "","","","",""  -- clear them
-		log (LOGTYPE_DEBUG, "No Steam Info found", logentry)
+		LUALOG.log (LOGTYPE_DEBUG, "No Steam Info found", logentry)
 		
 		-- There are other checks to do.
 		for key,value in pairs(LOGCONTEXT_NONSICHECKS) do
@@ -137,7 +121,7 @@ local function ProcessLineContext(logdt, logtm, logentry)
 		return
 	end
 	
-	log(LOGTYPE_DEBUG,LOGCONTEXTMSG[contextid], nick, steamid, slot, ip, team, truelogentry)
+	LUALOG.log(LOGTYPE_DEBUG,LOGCONTEXTMSG[contextid], nick, steamid, slot, ip, team, truelogentry)
 	
 	if (contextid ~= LOGCONTEXT_UNKNOWN or LUALOG.UserConfig.ShouldProcessUnknown == true) then
 		linesWritten = linesWritten + 1
@@ -150,38 +134,38 @@ end
 
 
 local function ProcessLine(rownum, logline)
-	log (LOGTYPE_DEBUG, "Processing line # "..rownum, logline);
+	LUALOG.log (LOGTYPE_DEBUG, "Processing line # "..rownum, logline);
 	if (IsLineValid(logline)) then
-		local logdt = string.sub(logline,LOGDT_START,LOGDT_END)
-		local logtm = string.sub(logline,LOGTM_START,LOGTM_END)
-		local logentry = string.sub(logline,LOGENTRY_START)
+		local logdt = string.sub(logline,LUALOG.SourceDefs.Specs["SrcdsLog"].Date_Start,LUALOG.SourceDefs.Specs["SrcdsLog"].Date_End)
+		local logtm = string.sub(logline,LUALOG.SourceDefs.Specs["SrcdsLog"].Time_Start,LUALOG.SourceDefs.Specs["SrcdsLog"].Time_End)
+		local logentry = string.sub(logline,LUALOG.SourceDefs.Specs["SrcdsLog"].Entry_Start)
 		ProcessLineContext(logdt, logtm, logentry)
 	else
 		if (ProcessingLuaError) then
 			ProcessLineContext(lastLuaErrorDate, lastLuaErrorTime, logline)
 		else
-			log (LOGTYPE_DEBUG, "Row number "..rownum.." rejected. Not a valid log entry");
+			LUALOG.log (LOGTYPE_DEBUG, "Row number "..rownum.." rejected. Not a valid log entry");
 		end
 	end
 end
 
 local function ProcessFile(logfile)
-	log (nil, "Processing: "..logfile);
+	LUALOG.log (nil, "Processing: "..logfile);
 	currLogFileTag = string.match(logfile, ".-([^\\/]-%.?[^%.\\/]*)$")
 	currLogFileTag = string.match(currLogFileTag,"([^%.]*)")
 	DeleteExistingTag(currLogFileTag)
 	
 	lines = {}
     for line in io.lines(logfile) do 
-		log(LOGTYPE_DEBUG, line)
+		LUALOG.log(LOGTYPE_DEBUG, line)
 		lines[#lines+1] = line;
 	end
-	log(nil, "Lines loaded: "..#lines);
+	LUALOG.log(nil, "Lines loaded: "..#lines);
 	linesWritten = 0;
 	for key,logline in pairs(lines) do
 		ProcessLine(key, logline)
 	end
-	log(nil, "Lines written: "..linesWritten);
+	LUALOG.log(nil, "Lines written: "..linesWritten);
 end
 
 
@@ -216,12 +200,12 @@ for key, value in pairs(LUALOG.UserConfig.logDirs) do
 	local filesToProcess = {}
 	dir = value
 	currServer = key
-	log (nil,"Building log file list")
+	LUALOG.log (nil,"Building log file list")
 	local p = io.popen('find "'..dir..'" -type f -name "'..LUALOG.UserConfig.fileMask..'" | xargs ls -1tr')  
 
 	for file in p:lines() do                         --Loop through all files
 	   filesToProcess[#filesToProcess + 1] = file;
-	   log (LOGTYPE_DEBUG, "Queued for processing: "..filesToProcess[#filesToProcess]);
+	   LUALOG.log (LOGTYPE_DEBUG, "Queued for processing: "..filesToProcess[#filesToProcess]);
 	end
 	for key,logfile in pairs(filesToProcess) do
 		ProcessFile(logfile)
