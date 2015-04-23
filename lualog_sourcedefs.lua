@@ -10,7 +10,7 @@ LUALOG.SourceDefs.Specs["ConsoleLog"] = { Text = "Log data from console log file
 LUALOG.SourceDefs.Specs["EventHook"] = { Text = "Log data from event hooks" }
 
 
-tprint(LUALOG.SourceDefs)
+LUALOG.tprint(LUALOG.SourceDefs)
 
 
 

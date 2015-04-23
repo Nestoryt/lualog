@@ -94,7 +94,7 @@ local function ProcessLineContext(logdt, logtm, logentry)
 			local part1, part2 = string.match(truelogentry, '^('..value..')(.*)')
 			if (part1 ~= nil) then
 				contextid = LOGCONTEXT_SICHECKID[key]
-				truelogentry = quotetrim(part2)
+				truelogentry = LUALOG.quotetrim(part2)
 				break
 			end
 		end
